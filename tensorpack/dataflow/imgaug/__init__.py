@@ -5,7 +5,7 @@
 import os
 from pkgutil import iter_modules
 
-__all__ = []
+__all__ = ['deserialize']
 
 
 def global_import(name):
@@ -31,3 +31,28 @@ else:
             continue
         if not module_name.startswith('_'):
             global_import(module_name)
+
+
+def deserialize(config):
+    """Instantiate a layer from a config dictionary.
+
+    Args:
+        config: dict of the form {'class_name': str, 'config': dict}
+
+    Returns:
+        Augmentor instance
+    """
+    assert isinstance(config, dict), "Argument config should be of the form {'class_name': str, 'config': dict}"
+    if 'class_name' not in config or 'config' not in config:
+        raise ValueError('Improper config format: ' + str(config))
+
+    global_classes = globals()
+    class_name = config['class_name']
+    cls = global_classes[class_name]
+
+    if cls is None:
+        raise ValueError('Unknown class: %s' % class_name)
+    if not hasattr(cls, 'from_config'):
+        raise ValueError('Class %s is not derived from Augmentor class' % class_name)
+
+    return cls.from_config(config['config'])

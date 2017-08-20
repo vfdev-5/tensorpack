@@ -7,7 +7,7 @@ from ...utils.utils import get_rng
 import six
 from six.moves import zip
 
-__all__ = ['Augmentor', 'ImageAugmentor', 'AugmentorList']
+__all__ = ['Augmentor', 'ImageAugmentor', 'AugmentorList', 'serialize']
 
 
 @six.add_metaclass(ABCMeta)
@@ -64,6 +64,40 @@ class Augmentor(object):
             size = []
         return self.rng.uniform(low, high, size)
 
+    def get_config(self):
+        """Get the config of the augmentor.
+
+        Augmentor's config is a Python dictionary (serializable)
+        containing the configuration of the augmentor.
+        """
+        config = {}
+        for k, v in self.__dict__.items():
+            if not (callable(v) or k == 'rng'):
+                config[k] = v
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        """Creates an augmentor from its config.
+
+        This method is the reverse of `get_config`,
+        capable of instantiating the same augmentor from the config
+        dictionary.
+
+        Args:
+            config: A Python dictionary, typically the output of get_config.
+
+        Returns:
+            augmentor instance.
+        """
+        return cls(**config)
+
+    def __repr__(self):
+        return str(serialize(self))
+
+    def __str__(self):
+        return self.__repr__()
+
 
 class ImageAugmentor(Augmentor):
     def _augment_coords(self, coords, param):
@@ -91,7 +125,7 @@ class AugmentorList(ImageAugmentor):
         Args:
             augmentors (list): list of :class:`ImageAugmentor` instance to be applied.
         """
-        self.augs = augmentors
+        self.augmentors = augmentors
         super(AugmentorList, self).__init__()
 
     def _get_augment_params(self, img):
@@ -102,23 +136,36 @@ class AugmentorList(ImageAugmentor):
         assert img.ndim in [2, 3], img.ndim
 
         prms = []
-        for a in self.augs:
+        for a in self.augmentors:
             img, prm = a._augment_return_params(img)
             prms.append(prm)
         return img, prms
 
     def _augment(self, img, param):
         assert img.ndim in [2, 3], img.ndim
-        for aug, prm in zip(self.augs, param):
+        for aug, prm in zip(self.augmentors, param):
             img = aug._augment(img, prm)
         return img
 
     def _augment_coords(self, coords, param):
-        for aug, prm in zip(self.augs, param):
+        for aug, prm in zip(self.augmentors, param):
             coords = aug._augment_coords(coords, prm)
         return coords
 
     def reset_state(self):
         """ Will reset state of each augmentor """
-        for a in self.augs:
+        for a in self.augmentors:
             a.reset_state()
+
+
+def serialize(augmentor):
+    """Serialize an augmentor.
+
+    Args:
+        augmentor: an Augmentor object.
+
+    Returns:
+        dictionary with config.
+    """
+    return {'class_name': augmentor.__class__.__name__,
+            'config': augmentor.get_config()}
