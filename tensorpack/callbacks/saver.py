@@ -7,6 +7,7 @@ from datetime import datetime
 import os
 import shutil
 import glob
+import re
 
 from .base import Callback
 from ..utils import logger
@@ -104,6 +105,7 @@ class MinSaver(Callback):
             monitor_stat(str): the name of the statistics.
             reverse (bool): if True, will save the maximum.
             filename (str): the name for the saved model.
+                Can be something like ``mymodel_val-bce_loss={val-bce_loss:.5f}`` where monitor_stat is 'val-bce_loss'
                 Defaults to ``min-{monitor_stat}.tfmodel``.
 
         Example:
@@ -150,9 +152,17 @@ class MinSaver(Callback):
                 "Cannot find a checkpoint state. Do you forget to use ModelSaver?")
         path = ckpt.model_checkpoint_path
 
-        newname = os.path.join(logger.LOG_DIR,
-                               self.filename or
-                               ('max-' + self.monitor_stat if self.reverse else 'min-' + self.monitor_stat))
+        if self.filename is not None:
+            # check if filename contains, for example, (self.monitor_stat='val-bce_loss')
+            # "model_{val-bce_loss:.5f}" or "model_{val-bce_loss}"
+            if len(re.findall(r'\{%s(?:.+)?\}' % self.monitor_stat, self.filename)) > 0:
+                newname = self.filename.format(**{self.monitor_stat: self.min})
+            else:
+                newname = self.filename
+        else:
+            newname = ('max-' + self.monitor_stat if self.reverse else 'min-' + self.monitor_stat)
+
+        newname = os.path.join(logger.LOG_DIR, newname)
         files_to_copy = glob.glob(path + '*')
         for file_to_copy in files_to_copy:
             shutil.copy(file_to_copy, file_to_copy.replace(path, newname))
